@@ -2,7 +2,9 @@ name: my-gym-control
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # 18 for native uuidv7(). The initial migration also installs a pl/pgsql fallback,
+    # so the schema still applies on Supabase and other Postgres 16/17 hosts.
+    image: postgres:18-alpine
     container_name: mgc-postgres
     restart: unless-stopped
     environment:
@@ -14,7 +16,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Postgres 18+ expects the mount one level up, at /var/lib/postgresql, and places
+      # data in a major-version subdirectory. Mounting /var/lib/postgresql/data (the
+      # convention through 17) makes the 18 image refuse to start.
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mgc -d my_gym_control"]
       interval: 5s

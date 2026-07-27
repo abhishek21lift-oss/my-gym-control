@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "verbatimModuleSyntax": false,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+
+    /* NestJS resolves providers from the metadata the classic compiler emits for
+       decorated constructor parameters. Without these two flags dependency injection
+       silently receives `undefined` for every dependency. */
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    /* Decorated parameters (`@Inject() private readonly x`) read as unused to the
+       compiler, which cannot see that the decorator consumes them. */
+    "noUnusedParameters": false,
+
+    /* Express and Nest describe headers and query objects with index signatures, so
+       `req.headers.authorization` would otherwise require bracket access everywhere. */
+    "noPropertyAccessFromIndexSignature": false,
+
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "test/**"]
+}

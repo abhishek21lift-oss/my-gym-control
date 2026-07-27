@@ -1,0 +1,188 @@
+// =============================================================================
+// MY GYM CONTROL — data model
+//
+// Conventions enforced across every tenant-scoped model (docs/ARCHITECTURE.md §4):
+//
+//   id             String   @id @default(dbgenerated("uuidv7()"))  — time-ordered PK
+//   organizationId String   — owning tenant, never nullable
+//   branchId       String?  — null means organization-wide
+//   createdBy      String?  — actor; null only for system-originated rows
+//   updatedBy      String?
+//   createdAt      DateTime @default(now())
+//   updatedAt      DateTime @updatedAt
+//   deletedAt      DateTime? — soft delete; NULL means live
+//
+// These columns are populated by the Prisma client extension, not by hand. A service
+// never writes `organizationId` and therefore can never forget it.
+// =============================================================================
+
+generator client {
+  provider     = "prisma-client"
+  // Emitted under src/ so it sits inside the package's tsconfig rootDir. The v7
+  // generator produces TypeScript, not a prebuilt bundle, so it must be part of the
+  // same compilation unit as the code that wraps it.
+  output       = "../src/generated/client"
+  // CommonJS so the NestJS API can require the client without an ESM migration.
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
+}
+
+// Connection URLs live in prisma.config.ts — Prisma 7 removed them from the schema so
+// that a checked-in schema file can no longer carry environment-specific wiring.
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------------------------------------------
+// Tenancy root
+// -----------------------------------------------------------------------------
+
+/// A gym business. The tenancy boundary: every other row in the system belongs to
+/// exactly one Organization, and no query may cross this line.
+model Organization {
+  id   String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  /// URL-safe identifier used for tenant-scoped subdomains and invite links.
+  slug String @unique @db.VarChar(63)
+  name String @db.VarChar(200)
+
+  legalName   String? @map("legal_name") @db.VarChar(200)
+  /// GSTIN in India; VAT/EIN elsewhere. Free-form because format is jurisdictional.
+  taxId       String? @map("tax_id") @db.VarChar(64)
+  contactEmail String @map("contact_email") @db.VarChar(320)
+  contactPhone String? @map("contact_phone") @db.VarChar(32)
+
+  /// IANA zone (e.g. "Asia/Kolkata"). Attendance, billing cycles and reporting
+  /// windows are computed in the organization's local time, not the server's.
+  timezone String @default("Asia/Kolkata") @db.VarChar(64)
+  /// ISO-4217. Amounts are stored as integer minor units alongside this code.
+  currency String @default("INR") @db.Char(3)
+  locale   String @default("en-IN") @db.VarChar(16)
+
+  status OrganizationStatus @default(TRIAL)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  branches  Branch[]
+  auditLogs AuditLog[]
+
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+enum OrganizationStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+
+  @@map("organization_status")
+}
+
+/// A physical location. A single-location gym has exactly one; a chain has many.
+/// Branch-scoping is modelled from day one because retrofitting it onto attendance
+/// and revenue data after a customer opens a second location is a migration, not a
+/// feature.
+model Branch {
+  id             String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  name String  @db.VarChar(200)
+  code String  @db.VarChar(32)
+
+  addressLine1 String? @map("address_line1") @db.VarChar(200)
+  addressLine2 String? @map("address_line2") @db.VarChar(200)
+  city         String? @db.VarChar(100)
+  state        String? @db.VarChar(100)
+  postalCode   String? @map("postal_code") @db.VarChar(20)
+  countryCode  String  @default("IN") @map("country_code") @db.Char(2)
+
+  phone String? @db.VarChar(32)
+  email String? @db.VarChar(320)
+
+  /// Overrides the organization timezone for chains spanning zones.
+  timezone String? @db.VarChar(64)
+  isActive Boolean @default(true) @map("is_active")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  /// Branch codes are unique per organization, not globally — two different gyms may
+  /// both call a location "HQ".
+  @@unique([organizationId, code])
+  @@index([organizationId, deletedAt])
+  @@map("branches")
+}
+
+// -----------------------------------------------------------------------------
+// Audit
+// -----------------------------------------------------------------------------
+
+/// Append-only record of every mutation. Written by the Prisma client extension, so
+/// it cannot be selectively skipped by a service that would rather not be logged.
+///
+/// Deliberately has no `updatedAt` and no `deletedAt`: an audit row that can be
+/// edited or soft-deleted is not an audit row.
+model AuditLog {
+  id             String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  branchId       String? @map("branch_id") @db.Uuid
+
+  /// Null when the actor is the system (scheduled jobs, webhook handlers).
+  actorId   String?  @map("actor_id") @db.Uuid
+  actorType ActorType @default(USER) @map("actor_type")
+
+  action   AuditAction
+  /// Prisma model name, e.g. "Member", "Payment".
+  entity   String      @db.VarChar(80)
+  entityId String?     @map("entity_id") @db.Uuid
+
+  /// Row state before and after. Null `before` on create, null `after` on delete.
+  /// Fields classified as sensitive are redacted by the extension before storage —
+  /// an audit trail must not become a second, unprotected copy of personal data.
+  before Json?
+  after  Json?
+
+  ipAddress String? @map("ip_address") @db.Inet
+  userAgent String? @map("user_agent") @db.VarChar(512)
+  /// Correlates this entry with the API request log and any client-reported error.
+  requestId String? @map("request_id") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, entity, entityId])
+  @@index([organizationId, actorId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  API_KEY
+  WEBHOOK
+
+  @@map("actor_type")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+  LOGIN
+  LOGOUT
+  EXPORT
+  PERMISSION_CHANGE
+
+  @@map("audit_action")
+}

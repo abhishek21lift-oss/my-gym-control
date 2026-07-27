@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # A new push supersedes the previous run on the same ref. Without this, a busy PR
+  # burns runner minutes finishing builds of commits nobody will merge.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  verify:
+    name: Typecheck, build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: mgc
+          POSTGRES_PASSWORD: mgc_ci
+          POSTGRES_DB: my_gym_control_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mgc -d my_gym_control_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://mgc:mgc_ci@localhost:5432/my_gym_control_test?schema=public
+      DIRECT_URL: postgresql://mgc:mgc_ci@localhost:5432/my_gym_control_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      AUTH_SECRET: ci-only-secret-value-that-is-long-enough-for-validation
+      WEBAUTHN_RP_ID: localhost
+      WEBAUTHN_ORIGIN: http://localhost:3000
+      STORAGE_ENDPOINT: http://localhost:9000
+      STORAGE_ACCESS_KEY_ID: ci
+      STORAGE_SECRET_ACCESS_KEY: ci-secret
+      STORAGE_BUCKET_MEDIA: mgc-media
+      STORAGE_BUCKET_BODY: mgc-body-private
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # --frozen-lockfile fails the build if the lockfile disagrees with the manifests,
+      # rather than silently resolving different versions than a developer ran locally.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm --filter @mgc/db exec prisma migrate deploy
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Unit tests
+        run: pnpm test
+
+  # Secrets committed to the repository are found by scanning for them, not by asking
+  # people not to commit them.
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
