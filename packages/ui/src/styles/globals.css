@@ -1,0 +1,297 @@
+@import 'tailwindcss';
+
+/* =============================================================================
+   MY GYM CONTROL — design tokens
+   =============================================================================
+
+   The only file in the repository where a colour, radius, shadow or easing value
+   is defined. Components consume tokens; a component that hardcodes a hex value is
+   a bug, because it will not follow the theme.
+
+   Colours are OKLCH rather than hex. OKLCH is perceptually uniform, so a lightness
+   step of 0.05 looks like the same size step at every hue — which is what makes a
+   dark theme derivable from a light one instead of hand-tuned twice. It also keeps
+   the accent from muddying when it is lightened for dark mode, which is exactly
+   where hex-based palettes usually fall apart.
+   ========================================================================== */
+
+/* next-themes sets `class="dark"` on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* --- Surfaces -----------------------------------------------------------
+     Four levels, not two. Dense product UI needs to express depth without
+     drawing a border around everything: page < raised < overlay < inset. */
+  --bg-base: oklch(0.985 0.002 265);
+  --bg-raised: oklch(1 0 0);
+  --bg-overlay: oklch(1 0 0);
+  --bg-inset: oklch(0.965 0.004 265);
+  --bg-hover: oklch(0.955 0.005 265);
+
+  /* --- Content ----------------------------------------------------------- */
+  --fg: oklch(0.21 0.012 265);
+  --fg-muted: oklch(0.52 0.012 265);
+  --fg-subtle: oklch(0.65 0.010 265);
+  --fg-on-accent: oklch(0.99 0.004 274);
+
+  /* --- Lines ------------------------------------------------------------- */
+  --line: oklch(0.92 0.006 265);
+  --line-strong: oklch(0.86 0.008 265);
+
+  /* --- Accent -------------------------------------------------------------
+     One accent, used sparingly. An interface where everything is emphasised
+     has emphasised nothing. */
+  --accent: oklch(0.55 0.198 274);
+  --accent-hover: oklch(0.5 0.198 274);
+  --accent-soft: oklch(0.95 0.03 274);
+
+  /* --- Semantic -----------------------------------------------------------
+     Paired fg/soft so status can be shown as a tint rather than a saturated
+     block, which is what makes a dashboard readable at a glance. */
+  --success: oklch(0.58 0.14 155);
+  --success-soft: oklch(0.95 0.04 155);
+  --warning: oklch(0.68 0.15 72);
+  --warning-soft: oklch(0.96 0.05 72);
+  --danger: oklch(0.55 0.21 25);
+  --danger-soft: oklch(0.95 0.04 25);
+  --info: oklch(0.58 0.14 235);
+  --info-soft: oklch(0.95 0.04 235);
+
+  /* --- Focus --------------------------------------------------------------
+     Deliberately high contrast and never removed. Keyboard users navigate this
+     product all day at a reception desk. */
+  --ring: oklch(0.55 0.198 274);
+
+  /* --- Elevation ----------------------------------------------------------
+     Layered rather than single-blur. Real shadows have a tight contact shadow
+     plus a wide ambient one; a single large blur reads as fog. Kept very low
+     opacity — heavy drop shadows are the fastest way to look dated. */
+  --shadow-xs: 0 1px 2px -1px oklch(0.21 0.012 265 / 0.08);
+  --shadow-sm: 0 1px 2px -1px oklch(0.21 0.012 265 / 0.08),
+    0 2px 6px -2px oklch(0.21 0.012 265 / 0.06);
+  --shadow-md: 0 1px 2px -1px oklch(0.21 0.012 265 / 0.06),
+    0 4px 12px -3px oklch(0.21 0.012 265 / 0.1);
+  --shadow-lg: 0 2px 4px -2px oklch(0.21 0.012 265 / 0.06),
+    0 12px 28px -6px oklch(0.21 0.012 265 / 0.14);
+  --shadow-xl: 0 4px 8px -4px oklch(0.21 0.012 265 / 0.08),
+    0 24px 56px -12px oklch(0.21 0.012 265 / 0.18);
+
+  /* --- Glass --------------------------------------------------------------
+     Used only on elements that genuinely float over content (command palette,
+     sticky headers). Applied to flat panels it is just noise. */
+  --glass-bg: oklch(1 0 0 / 0.72);
+  --glass-line: oklch(1 0 0 / 0.6);
+}
+
+.dark {
+  --bg-base: oklch(0.165 0.008 265);
+  --bg-raised: oklch(0.205 0.010 265);
+  --bg-overlay: oklch(0.235 0.011 265);
+  --bg-inset: oklch(0.14 0.008 265);
+  --bg-hover: oklch(0.25 0.012 265);
+
+  --fg: oklch(0.97 0.004 265);
+  --fg-muted: oklch(0.71 0.012 265);
+  --fg-subtle: oklch(0.56 0.012 265);
+  --fg-on-accent: oklch(0.15 0.01 274);
+
+  --line: oklch(0.28 0.012 265);
+  --line-strong: oklch(0.36 0.014 265);
+
+  /* Lifted lightness and reduced chroma: a colour that reads as confident on
+     white is glaring on near-black. */
+  --accent: oklch(0.7 0.16 274);
+  --accent-hover: oklch(0.76 0.16 274);
+  --accent-soft: oklch(0.28 0.06 274);
+
+  --success: oklch(0.72 0.15 155);
+  --success-soft: oklch(0.26 0.05 155);
+  --warning: oklch(0.79 0.14 72);
+  --warning-soft: oklch(0.28 0.05 72);
+  --danger: oklch(0.68 0.18 25);
+  --danger-soft: oklch(0.28 0.06 25);
+  --info: oklch(0.7 0.13 235);
+  --info-soft: oklch(0.26 0.05 235);
+
+  --ring: oklch(0.7 0.16 274);
+
+  /* Shadows barely register on dark surfaces, so depth comes mostly from the
+     surface scale above. These stay for contact definition only. */
+  --shadow-xs: 0 1px 2px -1px oklch(0 0 0 / 0.4);
+  --shadow-sm: 0 1px 2px -1px oklch(0 0 0 / 0.4), 0 2px 6px -2px oklch(0 0 0 / 0.3);
+  --shadow-md: 0 1px 2px -1px oklch(0 0 0 / 0.4), 0 4px 12px -3px oklch(0 0 0 / 0.4);
+  --shadow-lg: 0 2px 4px -2px oklch(0 0 0 / 0.4), 0 12px 28px -6px oklch(0 0 0 / 0.5);
+  --shadow-xl: 0 4px 8px -4px oklch(0 0 0 / 0.4), 0 24px 56px -12px oklch(0 0 0 / 0.6);
+
+  --glass-bg: oklch(0.205 0.010 265 / 0.72);
+  --glass-line: oklch(1 0 0 / 0.08);
+}
+
+@theme inline {
+  --color-base: var(--bg-base);
+  --color-raised: var(--bg-raised);
+  --color-overlay: var(--bg-overlay);
+  --color-inset: var(--bg-inset);
+  --color-hover: var(--bg-hover);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-on-accent: var(--fg-on-accent);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --color-ring: var(--ring);
+  --color-glass: var(--glass-bg);
+  --color-glass-line: var(--glass-line);
+
+  /* --- Radius -------------------------------------------------------------
+     Generous but not pill-shaped. The scale is nested-aware: an element inside
+     a rounded-xl card uses rounded-lg so the curves stay concentric. */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.125rem;
+  --radius-2xl: 1.5rem;
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+
+  /* --- Type ---------------------------------------------------------------
+     A tight scale. Six sizes is enough for any screen in this product; more
+     options produce inconsistency, not flexibility. */
+  --font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-2xs--letter-spacing: 0.01em;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-xl--letter-spacing: -0.015em;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 2rem;
+  --text-2xl--letter-spacing: -0.02em;
+  --text-3xl: 2.25rem;
+  --text-3xl--line-height: 2.5rem;
+  --text-3xl--letter-spacing: -0.025em;
+  --text-4xl: 3rem;
+  --text-4xl--line-height: 3.25rem;
+  --text-4xl--letter-spacing: -0.03em;
+
+  /* --- Motion -------------------------------------------------------------
+     Named curves, not per-component magic numbers. Coherence across an
+     interface comes from every element decelerating the same way. */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+  --ease-spring: cubic-bezier(0.16, 1.06, 0.32, 1);
+
+  --animate-fade-in: fade-in 0.18s var(--ease-out-quint);
+  --animate-rise: rise 0.28s var(--ease-out-quint);
+  --animate-shimmer: shimmer 1.6s linear infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    /* Prevents layout shift when a scrollbar appears — a dashboard that jumps
+       2px sideways on every navigation feels cheap. */
+    scrollbar-gutter: stable;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--bg-base);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    /* Optical refinements that separate a product from a template. */
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv11', 'ss01';
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Focus is shown for keyboard navigation and suppressed for mouse clicks —
+     visible, never annoying, never absent. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  ::selection {
+    background-color: var(--accent-soft);
+    color: var(--fg);
+  }
+
+  /* Respect the OS setting. Vestibular disorders are not an edge case, and this
+     is a fitness product with a large animated surface. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@utility glass {
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border: 1px solid var(--glass-line);
+}

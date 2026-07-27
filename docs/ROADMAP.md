@@ -15,7 +15,12 @@ Monorepo, tooling, and the guardrails that everything after this depends on.
 
 - Turborepo + pnpm workspaces; strict TypeScript base config; ESLint + Prettier.
 - `apps/api` NestJS skeleton with health/readiness endpoints and structured logging.
-- `apps/app` + `apps/web` Next.js 16 skeletons.
+- `apps/app` — Next.js 16 shell with theme, fonts, security headers, and the design
+  system reference route that proves tokens render correctly in both themes.
+  (`apps/web`, the public marketing site, is **not** part of this phase. It depends on
+  real pricing, real screenshots and a working AI receptionist — see the sequencing
+  rationale at the end of this document. Scaffolding it now would mean rebuilding it in
+  Phase 7.)
 - `packages/db` with Prisma wired to Postgres; `packages/config`, `packages/contracts`.
 - `packages/ui`: Tailwind v4 `@theme` token file, light/dark, typography scale, the base
   primitives (Button, Card, Input, Dialog, Sheet, Table, Toast) and the `DataView` state

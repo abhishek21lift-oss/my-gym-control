@@ -28,16 +28,40 @@ observed, not that it was written.
 | Request correlation ids, echoed as `X-Request-Id` | Verified in response headers |
 | Two-tier rate limiting (burst + sustained) | Guard registered globally |
 | GitHub Actions CI + gitleaks secret scan | **Written, not yet run** |
+| `packages/ui` — OKLCH token system, light + dark | Typechecks; verified rendering in both themes |
+| Primitives: Button, Card, Input, Badge, Skeleton, DataView, ThemeToggle | Rendered and inspected in the browser |
+| `apps/app` — Next.js 16 shell, Geist fonts, security headers | Production build succeeds; 2 static routes |
+| Design system reference route (`/`) | Verified: tokens resolve, theme switch flips every surface |
+
+### Verified in the browser
+
+Computed styles were read directly from the running page rather than eyeballed:
+
+- `--accent` lifts from `oklch(0.55 …)` in light to `oklch(0.70 …)` in dark, and every
+  consuming utility follows it.
+- Surfaces, danger, and border tokens all switch correctly with the theme class.
+- Geist loads; `font-variant-numeric: tabular-nums` is active, so figures align in tables.
+
+One investigation worth recording: several elements appeared to keep their light-mode
+colour after switching to dark. The cause was **not** the token system — the automation
+pane does not composite frames, so CSS transitions that had started never advanced past
+their first keyframe. Elements without a `transition` on `background-color` (body, a
+freshly-inserted probe) reported dark correctly throughout, and suppressing transitions
+made every element report correctly. No code change was needed.
 
 ### Not started — remaining Phase 0
 
 | Item | Why it is not done |
 |---|---|
-| `packages/ui` — Tailwind v4 tokens, primitives, `DataView` | Next in sequence |
-| `apps/app` — Next.js shell with the four portal route groups | Depends on `packages/ui` |
-| `apps/web` — public marketing site | Depends on `packages/ui` |
-| `apps/worker` — BullMQ consumers | Not needed until Phase 5 |
 | API test harness (Vitest + SWC for decorator metadata) | esbuild cannot emit decorator metadata, so this needs an SWC transform rather than Vitest's default |
+| Portal route groups `(owner) (trainer) (member) (reception)` | They need auth and real data. Empty shells would be the placeholder work this project explicitly forbids — they land with Phase 1 and Phase 2. |
+
+### Re-sequenced
+
+`apps/web` (public marketing site) moved out of Phase 0 into **Phase 7**. The roadmap's
+own rationale already said it depends on real pricing, real screenshots and a working AI
+receptionist; scaffolding it in Phase 0 would guarantee rebuilding it. `apps/worker` is
+similarly deferred to Phase 5, where the first queued job actually exists.
 
 The `test` script was removed from `apps/api` rather than left pointing at a runner
 with no tests. A green check for a suite that executes nothing is worse than no check.

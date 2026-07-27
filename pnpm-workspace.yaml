@@ -6,6 +6,7 @@ allowBuilds:
   '@prisma/engines': true
   esbuild: true
   prisma: true
+  sharp: true
 
 # Single source of truth for dependency versions across every workspace package.
 # A package declares `"react": "catalog:"` and gets whatever is pinned here, so two

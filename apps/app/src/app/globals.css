@@ -1,0 +1,9 @@
+@import '@mgc/ui/styles.css';
+
+/**
+ * Tailwind v4 discovers utility classes by scanning source files, and it skips
+ * node_modules by default. @mgc/ui is a workspace package symlinked into node_modules,
+ * so without this its components' classes would be absent from the generated stylesheet
+ * and every shared component would render unstyled.
+ */
+@source '../../../../packages/ui/src';
