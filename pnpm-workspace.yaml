@@ -1,0 +1,78 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Single source of truth for dependency versions across every workspace package.
+# A package declares `"react": "catalog:"` and gets whatever is pinned here, so two
+# packages can never resolve different copies of React, Prisma or Zod.
+catalog:
+  # --- Framework ---
+  next: 16.2.12
+  react: 19.2.8
+  react-dom: 19.2.8
+  "@types/react": 19.2.17
+  "@types/react-dom": 19.2.3
+
+  # --- Language / tooling ---
+  # Pinned to 5.9.3 because @nestjs/cli pins exactly this version; NestJS dependency
+  # injection relies on `emitDecoratorMetadata`, which is emitted by the classic tsc.
+  # TypeScript 7 (the native compiler) is `latest` but is not adopted here until the
+  # NestJS toolchain moves. One major across the whole workspace, deliberately.
+  typescript: 5.9.3
+  turbo: 2.10.7
+  "@types/node": 26.1.2
+
+  # --- Backend ---
+  "@nestjs/common": 11.1.28
+  "@nestjs/core": 11.1.28
+  "@nestjs/platform-express": 11.1.28
+  "@nestjs/config": 4.0.4
+  "@nestjs/terminus": 11.1.1
+  "@nestjs/throttler": 6.5.0
+  reflect-metadata: 0.2.2
+  rxjs: 7.8.2
+  helmet: 8.3.0
+  pino: 10.3.1
+  pino-http: 11.0.0
+  pino-pretty: 13.1.3
+
+  # --- Data ---
+  prisma: 7.9.1
+  "@prisma/client": 7.9.1
+  ioredis: 5.11.1
+  bullmq: 5.81.2
+
+  # --- Shared ---
+  zod: 4.4.3
+
+  # --- Frontend ---
+  "@tanstack/react-query": 5.101.4
+  "@tanstack/react-table": 8.21.3
+  "@tanstack/react-virtual": 3.14.8
+  framer-motion: 12.42.2
+  react-hook-form: 7.83.0
+  "@hookform/resolvers": 5.5.7
+  recharts: 3.10.1
+  next-themes: 0.4.6
+  lucide-react: 1.27.0
+  class-variance-authority: 0.7.1
+  clsx: 2.1.1
+  tailwind-merge: 3.6.0
+  tailwindcss: 4.3.3
+  "@tailwindcss/postcss": 4.3.3
+
+  # --- Testing ---
+  vitest: 4.1.10
+  "@vitest/coverage-v8": 4.1.10
+  supertest: 7.2.2
+  "@types/supertest": 7.2.1
+
+minimumReleaseAgeExclude:
+  - '@types/node@26.1.2'
+
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - prisma
+  - esbuild
+  - sharp

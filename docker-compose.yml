@@ -1,0 +1,64 @@
+name: my-gym-control
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: mgc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mgc
+      POSTGRES_PASSWORD: mgc_local_dev
+      POSTGRES_DB: my_gym_control
+      # Deterministic collation so ORDER BY behaves identically in dev, CI and prod.
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US --encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mgc -d my_gym_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    container_name: mgc-redis
+    restart: unless-stopped
+    # BullMQ requires eviction to be disabled: evicting a job key loses the job.
+    command: redis-server --maxmemory-policy noeviction --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible local stand-in for Cloudflare R2, so media upload code paths are
+  # exercised in development against the same API surface used in production.
+  minio:
+    image: minio/minio:latest
+    container_name: mgc-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: mgc_local
+      MINIO_ROOT_PASSWORD: mgc_local_dev_secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

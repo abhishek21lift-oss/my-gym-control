@@ -1,0 +1,37 @@
+﻿{
+  "name": "my-gym-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MY GYM CONTROL - AI-powered Gym Operating System",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "clean": "turbo run clean && rimraf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json,css,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json,css,yaml,yml}\"",
+    "db:generate": "pnpm --filter @mgc/db generate",
+    "db:migrate": "pnpm --filter @mgc/db migrate",
+    "db:studio": "pnpm --filter @mgc/db studio",
+    "db:seed": "pnpm --filter @mgc/db seed",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:reset": "docker compose down -v && docker compose up -d"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "prettier": "3.9.6",
+    "rimraf": "6.1.3",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  }
+}
+
