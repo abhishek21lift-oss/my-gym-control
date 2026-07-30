@@ -99,6 +99,20 @@ BEGIN
 END;
 $$;
 
+-- Lets the migration-running role assume the restricted role via SET ROLE. This is what
+-- makes the policies verifiable: without it, only a superuser could switch into the role
+-- to check that its restrictions actually bite. Granting a strictly-less-privileged role
+-- to the owner adds no capability the owner did not already have.
+DO $$
+BEGIN
+  EXECUTE format('GRANT mgc_app_restricted TO %I', current_user);
+EXCEPTION
+  -- Already a member, or a managed platform that forbids the grant (Supabase). Neither
+  -- affects enforcement, only the ability to self-test.
+  WHEN others THEN NULL;
+END;
+$$;
+
 GRANT USAGE ON SCHEMA public TO mgc_app_restricted;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mgc_app_restricted;
 GRANT EXECUTE ON FUNCTION app_current_organization_id() TO mgc_app_restricted;

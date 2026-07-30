@@ -1,0 +1,160 @@
+# Render Blueprint — API, database and cache.
+#
+# Deliberately uses Render's native Node runtime rather than a Dockerfile. A Dockerfile
+# for a pnpm/Turborepo monorepo needs `turbo prune`, a multi-stage build and careful
+# lockfile handling, none of which can be verified without Docker — and shipping an
+# unverifiable build definition is worse than not shipping one. The build and start
+# commands below are the same ones that already pass locally.
+#
+# Apply with: Render Dashboard -> New -> Blueprint -> point at this repository.
+
+databases:
+  - name: mgc-postgres
+    databaseName: my_gym_control
+    user: mgc
+    # Closest region to the primary market. Latency between the API and its database
+    # dominates request time far more than anything in application code, so these two
+    # must share a region.
+    region: singapore
+    plan: free
+    postgresMajorVersion: "17"
+    ipAllowList: [] # Private network only; no public access.
+
+services:
+  # ---------------------------------------------------------------------------
+  # API
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: mgc-api
+    runtime: node
+    region: singapore
+    plan: free
+    branch: main
+    # Only rebuild when something the API depends on changes. A commit that only touches
+    # the marketing copy should not redeploy the backend.
+    buildFilter:
+      paths:
+        - apps/api/**
+        - packages/db/**
+        - packages/contracts/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - render.yaml
+
+    buildCommand: >-
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @mgc/db generate &&
+      pnpm --filter @mgc/api build
+
+    startCommand: node apps/api/dist/main.js
+
+    # Readiness, not liveness. Render should route traffic only once the instance can
+    # actually answer a database query — see apps/api/src/modules/health.
+    healthCheckPath: /api/v1/health/ready
+
+    # NOTE ON MIGRATIONS
+    # Migrations are NOT run here. Render's preDeployCommand requires a paid instance,
+    # and running `migrate deploy` from startCommand would execute schema changes on
+    # every instance boot and on every autoscale event — which is how two instances end
+    # up racing the same migration. They run as an explicit, auditable step instead:
+    # .github/workflows/migrate.yml (manual dispatch).
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "24"
+
+      # Render injects the port it expects the service to listen on.
+      - key: API_PORT
+        fromService:
+          type: web
+          name: mgc-api
+          property: port
+
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mgc-postgres
+          property: connectionString
+      # Same instance here: Render's Postgres does not front a transaction pooler, so
+      # there is no pooled/direct split to make. The env schema still requires this to
+      # be set explicitly in production, because on Supabase the two genuinely differ.
+      - key: DIRECT_URL
+        fromDatabase:
+          name: mgc-postgres
+          property: connectionString
+
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: mgc-cache
+          property: connectionString
+
+      # Generated once by Render and then held stable. Rotating this invalidates every
+      # session, so it must not be regenerated on redeploy.
+      - key: AUTH_SECRET
+        generateValue: true
+
+      - key: API_URL
+        value: https://mgc-api.onrender.com
+      - key: CORS_ORIGINS
+        # The env schema refuses wildcards and localhost in production, so this must be
+        # the real app origin. Update after the Vercel domain is assigned.
+        value: https://mgc-app.vercel.app
+
+      - key: WEBAUTHN_RP_ID
+        value: mgc-app.vercel.app
+      - key: WEBAUTHN_RP_NAME
+        value: MY GYM CONTROL
+      - key: WEBAUTHN_ORIGIN
+        value: https://mgc-app.vercel.app
+
+      # --- Set manually in the Render dashboard; never committed -------------
+      # Marked sync:false so Blueprint applies do not overwrite them and so Render
+      # prompts for a value instead of silently deploying without one.
+      - key: STORAGE_ENDPOINT
+        sync: false
+      - key: STORAGE_ACCESS_KEY_ID
+        sync: false
+      - key: STORAGE_SECRET_ACCESS_KEY
+        sync: false
+      - key: STORAGE_BUCKET_MEDIA
+        value: mgc-media
+      - key: STORAGE_BUCKET_BODY
+        value: mgc-body-private
+
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # ---------------------------------------------------------------------------
+  # Cache / queue backend
+  # ---------------------------------------------------------------------------
+  - type: keyvalue
+    name: mgc-cache
+    region: singapore
+    plan: free
+    ipAllowList: []
+    # BullMQ loses jobs if Redis evicts keys under memory pressure, so eviction must be
+    # disabled rather than left at the default LRU policy.
+    maxmemoryPolicy: noeviction

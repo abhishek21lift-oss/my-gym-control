@@ -22,6 +22,10 @@
     "db:migrate": "pnpm --filter @mgc/db migrate",
     "db:studio": "pnpm --filter @mgc/db studio",
     "db:seed": "pnpm --filter @mgc/db seed",
+    "db:up": "pnpm --filter @mgc/db local:start",
+    "db:down": "pnpm --filter @mgc/db local:stop",
+    "db:status": "pnpm --filter @mgc/db local:status",
+    "db:nuke": "pnpm --filter @mgc/db local:nuke",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "infra:reset": "docker compose down -v && docker compose up -d"

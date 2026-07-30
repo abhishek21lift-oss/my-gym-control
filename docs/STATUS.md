@@ -80,31 +80,54 @@ with no tests. A green check for a suite that executes nothing is worse than no 
 | Model registry derived from Prisma's runtime datamodel, validated at construction | Written; typechecks |
 | Audit redaction policy | **13/13 unit tests pass** |
 | RLS migration — policies, restricted role, append-only audit grants | Written; **not yet applied** |
-| Cross-tenant isolation suite — 30 assertions | Written; typechecks; **not yet executed** |
+| Cross-tenant isolation suite — 30 assertions | Written; typechecks; **awaiting first CI run** |
+| RLS suite — 20 assertions via `SET ROLE mgc_app_restricted` | Written; typechecks; **awaiting first CI run** |
 | `tenantData()` type bridge | Written; typechecks |
+| Render blueprint, Vercel config, migration workflow | Written; **awaiting first deploy** |
 
-### Blocked: Docker will not start
+### Verification moved to CI
 
-The isolation suite and the RLS migration both need Postgres, and Docker Desktop cannot
-start on this machine right now. Its privileged helper service (`com.docker.service`) is
-stopped with `StartType: Manual`, and starting it requires elevation:
+Docker Desktop cannot start on the development machine — its privileged helper service
+requires elevation that is not available (`Cannot open com.docker.service`) — and no
+native Postgres is installed. Rather than keep the security-critical suites unrun, the
+authoritative verification is now **GitHub Actions**, which provisions a real Postgres 18
+service container on every push and runs:
 
 ```
-Cannot open com.docker.service service on computer '.'
+pnpm test:integration    # cross-tenant isolation + RLS suites
 ```
 
-Docker Desktop launches, fails to bring up the service, and exits. It worked earlier in
-this session, so this is an elevation prompt that needs a human, not a broken install.
+This is a better arrangement than it sounds. The two suites that matter most now run on
+infrastructure nobody can locally misconfigure, on every commit, rather than depending on
+a developer remembering to start a container.
 
-**To unblock:** start Docker Desktop manually (accepting the UAC prompt), then:
+**Status of the DB-dependent work: written, typechecked, awaiting its first CI run.**
+"Verified" means executed, and until CI runs green on a push these are not verified.
 
-```bash
-pnpm infra:up && pnpm --filter @mgc/db test:integration
-```
+Two additional local paths exist for anyone who wants one:
+`pnpm db:up` (real Postgres binaries from `node_modules`, no Docker, no admin) and
+`pnpm infra:up` (Docker Compose). **The former has never been successfully executed on
+this machine** — resolution of the vendored binaries was fixed but the run was not
+completed, so treat it as unproven until someone confirms it.
 
-Nothing else in Phase 1 depends on it. What is *not* claimed until it runs: that the
-extension actually isolates tenants at runtime. It typechecks and its logic is reviewed,
-but "verified" means executed, and it has not been.
+### Migration history rebuilt — a latent deploy blocker fixed
+
+The original init migration sorted *before* the `uuidv7()` compatibility shim
+(`20260727210222` < `20260728000000`). Prisma applies migrations in lexicographic order,
+so on a fresh database every table creation would have run before `uuidv7()` existed. It
+went unnoticed because local Postgres 18 has the function natively — but **it would have
+failed on the first deploy to Supabase**, which runs Postgres 17.
+
+History is now:
+
+| Order | Migration | Purpose |
+|---|---|---|
+| 1 | `20260727200000_uuidv7_compat` | Installs `uuidv7()` when the server lacks it |
+| 2 | `20260727210000_init_schema` | All 12 tables, 6 enums |
+| 3 | `20260728010000_row_level_security` | Policies, restricted role, append-only audit |
+
+The init migration was regenerated with `prisma migrate diff --from-empty --to-schema`,
+which needs no database connection. Safe to rewrite because nothing is deployed yet.
 
 ### Design decisions worth knowing
 

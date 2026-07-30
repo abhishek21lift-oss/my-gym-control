@@ -3,6 +3,12 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  # Extracts the platform's Postgres binaries into node_modules. Required for the
+  # no-Docker local database path (see tools/local-postgres.ts).
+  '@embedded-postgres/windows-x64': true
+  '@embedded-postgres/linux-x64': true
+  '@embedded-postgres/darwin-arm64': true
+  '@embedded-postgres/darwin-x64': true
   '@prisma/engines': true
   esbuild: true
   prisma: true

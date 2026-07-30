@@ -87,6 +87,12 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # The tenant isolation and RLS suites are the reason this job provisions a real
+      # Postgres. They are the load-bearing security tests of the platform, and they
+      # cannot run against a mock — see packages/db/src/extensions/*.integration.test.ts.
+      - name: Cross-tenant isolation and RLS suites
+        run: pnpm test:integration
+
   # Secrets committed to the repository are found by scanning for them, not by asking
   # people not to commit them.
   secret-scan:

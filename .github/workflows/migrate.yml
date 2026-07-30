@@ -1,0 +1,77 @@
+name: Migrate database
+
+# Manual dispatch only, never automatic.
+#
+# Schema changes are the one deploy step that is not safely idempotent under
+# concurrency: two instances starting at once will race the same migration, and Render
+# starts a new instance on every deploy and every autoscale event. Running migrations
+# from the application's startCommand is the most common way a production database gets
+# a half-applied schema.
+#
+# So this is deliberately a separate, logged, human-triggered action with an explicit
+# environment choice — and `migrate deploy`, which only applies committed migrations and
+# never generates or resets anything.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options: [staging, production]
+      confirm:
+        description: Type the environment name again to confirm
+        required: true
+        type: string
+
+concurrency:
+  # Never two migration runs against the same environment at once.
+  group: migrate-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply migrations to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    # Uses a GitHub Environment so DIRECT_URL is scoped per environment and can require
+    # a reviewer before production runs.
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Verify confirmation matches
+        # Cheap guard against dispatching against the wrong environment by mistake.
+        run: |
+          if [ "${{ inputs.confirm }}" != "${{ inputs.environment }}" ]; then
+            echo "Confirmation '${{ inputs.confirm }}' does not match target '${{ inputs.environment }}'."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Show pending migrations
+        # Printed before applying so the run log records exactly what was about to change.
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+        run: pnpm --filter @mgc/db exec prisma migrate status || true
+
+      - name: Apply migrations
+        env:
+          # The direct, unpooled connection. Prisma Migrate takes session-level advisory
+          # locks and runs DDL across statements; a transaction pooler breaks both.
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+        run: pnpm --filter @mgc/db exec prisma migrate deploy

@@ -4,7 +4,8 @@ An AI-powered Gym Operating System.
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — every structural decision and the alternative it beat.
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — nine phases, each shipping a vertical slice.
-- **[docs/STATUS.md](docs/STATUS.md)** — what is built and verified right now.
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — Render, Vercel, migrations, first-deploy order.
+- **[docs/STATUS.md](docs/STATUS.md)** — what is built, and what is verified rather than merely written.
 
 ---
 
@@ -14,7 +15,8 @@ An AI-powered Gym Operating System.
 |---|---|---|
 | Node | ≥ 22 | Developed on 26.1 |
 | pnpm | 11.17.0 | `npm i -g pnpm` — Node 26 no longer bundles corepack |
-| Docker | any recent | Postgres 18, Redis 8, MinIO for local infra |
+
+**Docker is optional.** Nothing in the build, test or deploy path requires it.
 
 ## Getting started
 
@@ -26,25 +28,43 @@ pnpm install
 cp .env.example .env
 ```
 
-```bash
-pnpm infra:up
-```
+Everything that does not need a database works immediately:
 
 ```bash
-pnpm db:migrate
+pnpm typecheck && pnpm build && pnpm test
 ```
+
+## Where the database comes from
+
+Three options, in order of preference:
+
+**1. CI (no setup).** Every push runs migrations plus the cross-tenant isolation and RLS
+suites against a real Postgres 18 service container. This is the authoritative check —
+see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+**2. A deployed database.** Point `DATABASE_URL`/`DIRECT_URL` at Render Postgres or
+Supabase and run `pnpm db:migrate`. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+**3. Local Postgres, no Docker and no admin rights.** Real Postgres binaries vendored
+into `node_modules`, cluster in `.local/`, bound to loopback only:
 
 ```bash
-pnpm dev
+pnpm db:up
 ```
 
-The API is then on `http://localhost:4000`. Verify it:
+`pnpm db:down`, `pnpm db:status`, `pnpm db:nuke` round it out. A Docker Compose path also
+still exists (`pnpm infra:up`) for anyone who prefers it, and additionally provides Redis
+and MinIO.
+
+Once a database is reachable:
+
+```bash
+pnpm db:migrate && pnpm dev
+```
 
 ```bash
 curl http://localhost:4000/api/v1/health/ready
 ```
-
-Expected:
 
 ```json
 { "status": "ok", "checks": { "database": { "status": "up", "latencyMs": 3 } } }

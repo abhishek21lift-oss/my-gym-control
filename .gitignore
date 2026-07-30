@@ -38,3 +38,6 @@ Thumbs.db
 
 # Local infra volumes
 .docker-data/
+
+# Local Postgres cluster (the no-Docker path). Real data directory — never committed.
+.local/
