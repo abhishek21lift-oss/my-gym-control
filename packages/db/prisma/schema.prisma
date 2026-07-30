@@ -66,6 +66,9 @@ model Organization {
 
   branches  Branch[]
   auditLogs AuditLog[]
+  members   OrganizationMember[]
+  roles     Role[]
+  consents  ConsentRecord[]
 
   @@index([deletedAt])
   @@map("organizations")
@@ -185,4 +188,347 @@ enum AuditAction {
   PERMISSION_CHANGE
 
   @@map("audit_action")
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+//
+// `User` is deliberately NOT tenant-scoped. A person is one person: a trainer may
+// work at two gyms, and a member who moves cities should keep their workout history.
+// Tenant-scoping identity would force duplicate accounts and make "which of these
+// four rows is really me" an unanswerable question.
+//
+// The tenant boundary sits on `OrganizationMember` instead — the join that says
+// *this* person has *this* role at *this* gym. Everything the extension guards hangs
+// off that, not off User.
+// -----------------------------------------------------------------------------
+
+model User {
+  id String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+
+  /// Supabase Auth owns identity; we own authorisation. Nullable because staff records
+  /// can be created by reception before the person has ever signed in.
+  supabaseUserId String? @unique @map("supabase_user_id") @db.Uuid
+
+  email     String  @unique @db.VarChar(320)
+  /// E.164. Unique where present — in India a phone number is the primary identifier
+  /// most gym members actually remember.
+  phone     String? @unique @db.VarChar(32)
+  fullName  String  @map("full_name") @db.VarChar(200)
+  avatarUrl String? @map("avatar_url") @db.VarChar(1024)
+
+  /// Platform staff, not gym staff. Guarded separately from every organization role.
+  isPlatformAdmin Boolean @default(false) @map("is_platform_admin")
+
+  /// Second factor enrolled. Distinct from having passkeys: a passkey is already
+  /// multi-factor, whereas this covers TOTP layered on top of a password.
+  totpSecret       String?   @map("totp_secret") @db.VarChar(255)
+  totpConfirmedAt  DateTime? @map("totp_confirmed_at") @db.Timestamptz(6)
+
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  memberships  OrganizationMember[]
+  sessions     Session[]
+  devices      Device[]
+  credentials  WebAuthnCredential[]
+  consents     ConsentRecord[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+/// A person's membership of an organization, carrying their role there.
+///
+/// This is the row the tenancy extension resolves a request against: it is what makes
+/// "user X, acting in organization Y, with role Z" a single fact rather than three
+/// loosely-related ones.
+model OrganizationMember {
+  id             String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  /// Primary branch. Null for org-wide staff such as an owner or regional manager.
+  branchId       String? @map("branch_id") @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+
+  status StaffStatus @default(INVITED)
+
+  /// Single-use invitation token, stored hashed. A plaintext invite token in the
+  /// database is a standing account-takeover primitive for anyone who reads a backup.
+  inviteTokenHash    String?   @map("invite_token_hash") @db.VarChar(255)
+  inviteExpiresAt    DateTime? @map("invite_expires_at") @db.Timestamptz(6)
+  invitedAt          DateTime? @map("invited_at") @db.Timestamptz(6)
+  joinedAt           DateTime? @map("joined_at") @db.Timestamptz(6)
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  /// One membership per person per organization. A trainer who is also a member at the
+  /// same gym is one membership with both capabilities, not two rows to reconcile.
+  @@unique([organizationId, userId])
+  @@index([organizationId, deletedAt])
+  @@index([userId, deletedAt])
+  @@map("organization_members")
+}
+
+enum StaffStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+
+  @@map("staff_status")
+}
+
+// -----------------------------------------------------------------------------
+// Authorisation
+// -----------------------------------------------------------------------------
+
+/// Roles are per-organization, including the built-in ones.
+///
+/// A shared global role table would be simpler, but it makes "let me rename Reception
+/// to Front Desk" or "our trainers can also record payments" impossible without
+/// affecting every other gym. Seeding the four defaults per organization costs one
+/// insert at signup and buys full customisation forever. `isSystem` marks the defaults
+/// so they cannot be deleted out from under the permission checks.
+model Role {
+  id             String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// Stable machine key (`owner`, `trainer`, `member`, `reception`). Code branches on
+  /// this; `name` is what the UI shows and the gym may rename freely.
+  key         String  @db.VarChar(64)
+  name        String  @db.VarChar(100)
+  description String? @db.VarChar(500)
+  isSystem    Boolean @default(false) @map("is_system")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  permissions  RolePermission[]
+  members      OrganizationMember[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId, deletedAt])
+  @@map("roles")
+}
+
+/// The global catalogue of grantable permissions.
+///
+/// One of only three models exempt from tenant scoping, and for a defensible reason:
+/// this is application metadata, not customer data. `members.create` means the same
+/// thing for every gym on the platform. Tenant-scoping it would mean seeding ~200
+/// identical rows per signup and migrating all of them whenever a feature ships.
+model Permission {
+  id  String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  /// `resource.action`, e.g. `members.create`, `payments.refund`.
+  key String @unique @db.VarChar(100)
+
+  resource    String  @db.VarChar(64)
+  action      String  @db.VarChar(64)
+  description String? @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  roles RolePermission[]
+
+  @@index([resource])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id             String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([organizationId])
+  @@map("role_permissions")
+}
+
+// -----------------------------------------------------------------------------
+// Sessions, devices, passkeys
+// -----------------------------------------------------------------------------
+
+model Session {
+  id String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+
+  userId String  @map("user_id") @db.Uuid
+  /// The organization this session is currently acting in. Null between sign-in and
+  /// organization selection for a user who belongs to more than one gym.
+  organizationId String? @map("organization_id") @db.Uuid
+  deviceId       String? @map("device_id") @db.Uuid
+
+  /// SHA-256 of the refresh token, never the token. A stolen database dump must not
+  /// yield usable sessions.
+  refreshTokenHash String @unique @map("refresh_token_hash") @db.VarChar(64)
+
+  ipAddress String? @map("ip_address") @db.Inet
+  userAgent String? @map("user_agent") @db.VarChar(512)
+
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  /// Why it was revoked — distinguishes a normal sign-out from a security response,
+  /// which matters when reconstructing an incident.
+  revokedReason SessionRevocationReason? @map("revoked_reason")
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+enum SessionRevocationReason {
+  USER_SIGNOUT
+  USER_REVOKED_DEVICE
+  PASSWORD_CHANGED
+  ADMIN_REVOKED
+  SUSPICIOUS_ACTIVITY
+  EXPIRED
+
+  @@map("session_revocation_reason")
+}
+
+model Device {
+  id     String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// Stable fingerprint so re-signing in on the same phone does not create a new row
+  /// and make the device list useless.
+  fingerprint String @map("fingerprint") @db.VarChar(128)
+
+  name     String? @db.VarChar(120)
+  platform String? @db.VarChar(64)
+
+  trustedAt  DateTime? @map("trusted_at") @db.Timestamptz(6)
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  lastIp     String?   @map("last_ip") @db.Inet
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions Session[]
+
+  @@unique([userId, fingerprint])
+  @@map("devices")
+}
+
+/// A WebAuthn credential — which is what "passkey", "Face ID" and "fingerprint" all
+/// are. They are not three features: Face ID is the platform authenticator UX on iOS,
+/// and Touch ID / Windows Hello are the same mechanism elsewhere.
+///
+/// Credentials are stored here rather than left inside the auth provider so passkeys
+/// survive a change of identity provider. Re-enrolling every user's device is not a
+/// migration anyone would survive commercially.
+model WebAuthnCredential {
+  id     String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// Base64url credential id from the authenticator.
+  credentialId String @unique @map("credential_id") @db.VarChar(512)
+  publicKey    Bytes  @map("public_key")
+  /// Signature counter for clone detection; some authenticators legitimately stay at 0.
+  counter      BigInt @default(0)
+
+  transports  String[] @default([])
+  deviceType  String?  @map("device_type") @db.VarChar(32)
+  /// Whether the credential is synced to a provider keychain. A backed-up credential
+  /// survives losing the device; a device-bound one does not, which changes what
+  /// recovery advice the UI should give.
+  backedUp    Boolean  @default(false) @map("backed_up")
+
+  name       String?   @db.VarChar(120)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("webauthn_credentials")
+}
+
+// -----------------------------------------------------------------------------
+// Consent
+// -----------------------------------------------------------------------------
+
+/// Per-category, per-version consent with a timestamp.
+///
+/// Built in Phase 1 alongside the schema rather than retrofitted, because this product
+/// stores progress photographs, body-fat estimates, injury notes and dietary data.
+/// Under India's DPDP Act 2023 that is personal data requiring purpose-limited consent,
+/// and body imagery is about as sensitive as consumer data gets.
+///
+/// Rows are append-only in practice: withdrawing consent sets `revokedAt` and a new
+/// grant inserts a new row, so the history of what someone agreed to — and when — is
+/// reconstructable. Overwriting a boolean would destroy exactly the evidence a
+/// regulator asks for.
+model ConsentRecord {
+  id             String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  category ConsentCategory
+  /// Version of the notice the person actually agreed to. Re-consent is required when
+  /// this changes; without it "they consented" is not a defensible claim.
+  policyVersion String @map("policy_version") @db.VarChar(32)
+
+  grantedAt DateTime  @default(now()) @map("granted_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  ipAddress String? @map("ip_address") @db.Inet
+  userAgent String? @map("user_agent") @db.VarChar(512)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, category])
+  @@map("consent_records")
+}
+
+enum ConsentCategory {
+  /// Baseline processing required to provide the service at all.
+  ESSENTIAL_PROCESSING
+  /// Progress photographs and any derived body composition estimate.
+  BODY_IMAGERY
+  /// Injuries, conditions, medication, dietary restrictions.
+  HEALTH_DATA
+  /// Sending the member's data to a third-party model provider.
+  AI_PROCESSING
+  /// Appearing in gym leaderboards visible to other members.
+  LEADERBOARD_VISIBILITY
+  /// Use of before/after imagery in gym marketing.
+  MARKETING_IMAGERY
+  /// Promotional email, SMS and WhatsApp.
+  MARKETING_COMMS
+
+  @@map("consent_category")
 }

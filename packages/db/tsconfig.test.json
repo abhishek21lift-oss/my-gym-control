@@ -1,0 +1,14 @@
+{
+  // Typechecks the test files too. The build config excludes them (they must not be
+  // emitted into dist), but excluding them from typechecking as well would let the
+  // isolation suite rot silently — which is the one suite that must never rot.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    // rootDir is only meaningful when emitting. Widened to the package root here so the
+    // config files outside src/ can be checked without tripping TS6059.
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "prisma.config.ts", "vitest.config.ts", "vitest.integration.config.ts"]
+}

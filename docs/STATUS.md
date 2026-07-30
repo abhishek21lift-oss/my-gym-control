@@ -68,7 +68,90 @@ with no tests. A green check for a suite that executes nothing is worse than no 
 
 ---
 
-## Phases 1–9
+## Phase 1 — Identity, tenancy & the audit spine
+
+### Written and typechecking
+
+| Item | State |
+|---|---|
+| Schema: `User`, `OrganizationMember`, `Role`, `Permission`, `RolePermission` | Written; migration not yet applied |
+| Schema: `Session`, `Device`, `WebAuthnCredential`, `ConsentRecord` | Written; migration not yet applied |
+| Prisma client extension — tenant injection, soft delete, actor stamping, audit | Written; typechecks |
+| Model registry derived from Prisma's runtime datamodel, validated at construction | Written; typechecks |
+| Audit redaction policy | **13/13 unit tests pass** |
+| RLS migration — policies, restricted role, append-only audit grants | Written; **not yet applied** |
+| Cross-tenant isolation suite — 30 assertions | Written; typechecks; **not yet executed** |
+| `tenantData()` type bridge | Written; typechecks |
+
+### Blocked: Docker will not start
+
+The isolation suite and the RLS migration both need Postgres, and Docker Desktop cannot
+start on this machine right now. Its privileged helper service (`com.docker.service`) is
+stopped with `StartType: Manual`, and starting it requires elevation:
+
+```
+Cannot open com.docker.service service on computer '.'
+```
+
+Docker Desktop launches, fails to bring up the service, and exits. It worked earlier in
+this session, so this is an elevation prompt that needs a human, not a broken install.
+
+**To unblock:** start Docker Desktop manually (accepting the UAC prompt), then:
+
+```bash
+pnpm infra:up && pnpm --filter @mgc/db test:integration
+```
+
+Nothing else in Phase 1 depends on it. What is *not* claimed until it runs: that the
+extension actually isolates tenants at runtime. It typechecks and its logic is reviewed,
+but "verified" means executed, and it has not been.
+
+### Design decisions worth knowing
+
+**`User` is not tenant-scoped.** A person is one person: a trainer may work at two gyms,
+and a member who moves cities keeps their history. The tenant boundary sits on
+`OrganizationMember` instead. Tenant-scoping identity would force duplicate accounts and
+make "which of these rows is really me" unanswerable.
+
+**Roles are per-organization, including the built-in four.** A global role table makes
+"rename Reception to Front Desk" or "our trainers can also take payments" impossible
+without affecting every other gym. Seeding four rows at signup buys full customisation
+forever.
+
+**Eight models are exempt from tenant scoping**, each with a written reason enforced by a
+test. Adding an exemption is a reviewable decision; forgetting to scope a model is not
+possible, because scoping is derived from the schema.
+
+**The extension depends on a Prisma internal.** Prisma 7 removed `Prisma.dmmf`; the
+equivalent is `client._runtimeDataModel`. Depending on an internal for a security control
+is normally indefensible, so its shape is validated at construction and cross-checked
+against the public `Prisma.ModelName` enum. A Prisma upgrade that changes it produces a
+**boot failure**, not silently disabled tenant filtering.
+
+**Audit writes fail closed by default.** A platform advertising audit logging must not
+accept unlogged writes. The cost — audit-table availability becomes a hard dependency for
+mutations — is the right trade for financial and health records, and is configurable for
+deployments with different obligations.
+
+**RLS applies to a non-owner role, not to the API.** The API connects as owner and is
+governed by the extension; `mgc_app_restricted` exists for direct database clients,
+Supabase's `authenticated` role and the RLS tests, and for them the policies are absolute.
+Enforcement is a property of the credential rather than of remembering to opt in.
+
+### Not started — remaining Phase 1
+
+| Item | Note |
+|---|---|
+| Supabase Auth integration (email/OTP, Google, JWKS verification) | Needs a provisioned Supabase project |
+| WebAuthn passkey enrolment and assertion | Schema ready; SimpleWebAuthn wiring pending |
+| CASL ability definitions shared by API guards and UI | After roles are seeded |
+| Onboarding flow: create organization → first branch → invite staff | After auth |
+| RLS test suite (via `SET ROLE mgc_app_restricted`) | Blocked with the rest on Docker |
+| API test harness (Vitest + SWC) | Still outstanding from Phase 0 |
+
+---
+
+## Phases 2–9
 
 Not started. See [ROADMAP.md](ROADMAP.md).
 
