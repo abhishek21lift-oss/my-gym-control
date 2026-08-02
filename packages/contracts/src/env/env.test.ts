@@ -72,6 +72,30 @@ describe('parseServerEnv', () => {
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
+  it('accepts a deployment with no REDIS_URL or STORAGE_* configured', () => {
+    // Phase 1 consumes neither Redis nor media storage, so their absence must not
+    // block boot. A missing key and a blank key must behave identically.
+    const { REDIS_URL: _redis, ...withoutRedis } = validDevEnv();
+    const { STORAGE_ENDPOINT: _endpoint, ...withoutStorage } = withoutRedis;
+    delete withoutStorage.STORAGE_ACCESS_KEY_ID;
+    delete withoutStorage.STORAGE_SECRET_ACCESS_KEY;
+
+    const env = parseServerEnv(withoutStorage);
+    expect(env.REDIS_URL).toBeUndefined();
+    expect(env.STORAGE_ENDPOINT).toBeUndefined();
+    expect(env.STORAGE_ACCESS_KEY_ID).toBeUndefined();
+    expect(env.STORAGE_BUCKET_MEDIA).toBe('mgc-media');
+
+    const blank = parseServerEnv({
+      ...validDevEnv(),
+      REDIS_URL: '  ',
+      STORAGE_ENDPOINT: '  ',
+      STORAGE_ACCESS_KEY_ID: '  ',
+    });
+    expect(blank.REDIS_URL).toBeUndefined();
+    expect(blank.STORAGE_ENDPOINT).toBeUndefined();
+  });
+
   it('coerces API_PORT from its string form and rejects out-of-range ports', () => {
     expect(parseServerEnv({ ...validDevEnv(), API_PORT: '8080' }).API_PORT).toBe(8080);
     expect(issuePaths(() => parseServerEnv({ ...validDevEnv(), API_PORT: '70000' }))).toContain(

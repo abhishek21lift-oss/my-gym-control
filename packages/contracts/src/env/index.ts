@@ -51,7 +51,8 @@ const optionalSecret = z
 const optionalUrl = z
   .string()
   .transform((v) => (v.trim() === '' ? undefined : v.trim()))
-  .pipe(z.url().optional());
+  .pipe(z.url().optional())
+  .optional();
 
 export const serverEnvSchema = z
   .object({
@@ -78,7 +79,8 @@ export const serverEnvSchema = z
             'must be a redis:// or rediss:// URL',
           )
           .optional(),
-      ),
+      )
+      .optional(),
 
     // --- Auth ---
     AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
