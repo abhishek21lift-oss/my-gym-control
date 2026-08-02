@@ -44,7 +44,8 @@ services:
 
     buildCommand: >-
       pnpm install --frozen-lockfile &&
-      pnpm --filter @mgc/db generate &&
+      pnpm --filter @mgc/contracts build &&
+      pnpm --filter @mgc/db build &&
       pnpm --filter @mgc/api build
 
     startCommand: node apps/api/dist/main.js
