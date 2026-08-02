@@ -89,7 +89,7 @@ async function bootstrap(): Promise<void> {
    */
   app.enableShutdownHooks();
 
-  const port = env.values.API_PORT;
+  const port = Number(process.env.PORT) || env.values.API_PORT;
   await app.listen(port, '0.0.0.0');
 
   logger.log(`API listening on port ${port} (${env.values.NODE_ENV})`);
