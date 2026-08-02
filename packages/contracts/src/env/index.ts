@@ -47,6 +47,12 @@ const optionalSecret = z
   .transform((v) => (v.trim() === '' ? undefined : v.trim()))
   .optional();
 
+/** Like `optionalSecret` but validates as a URL when a value is supplied. */
+const optionalUrl = z
+  .string()
+  .transform((v) => (v.trim() === '' ? undefined : v.trim()))
+  .pipe(z.url().optional());
+
 export const serverEnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -59,9 +65,20 @@ export const serverEnvSchema = z
     // --- Data ---
     DATABASE_URL: postgresUrl,
     DIRECT_URL: postgresUrl.optional(),
-    REDIS_URL: z.url().refine((u) => u.startsWith('redis://') || u.startsWith('rediss://'), {
-      message: 'must be a redis:// or rediss:// URL',
-    }),
+    // Optional until the worker/queue (Phase 5) and rate limiting actually consume it.
+    // Nothing in Phase 1 connects to Redis, so a blank value must not block a deploy.
+    REDIS_URL: z
+      .string()
+      .transform((v) => (v.trim() === '' ? undefined : v.trim()))
+      .pipe(
+        z
+          .url()
+          .refine(
+            (u) => u.startsWith('redis://') || u.startsWith('rediss://'),
+            'must be a redis:// or rediss:// URL',
+          )
+          .optional(),
+      ),
 
     // --- Auth ---
     AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
@@ -75,13 +92,13 @@ export const serverEnvSchema = z
     SUPABASE_SERVICE_ROLE_KEY: optionalSecret,
     SUPABASE_JWT_ISSUER: optionalSecret,
 
-    // --- Storage ---
-    STORAGE_ENDPOINT: z.url(),
+    // --- Storage (Phase 6 consumes this; nothing in Phase 1 uploads or reads media) ---
+    STORAGE_ENDPOINT: optionalUrl,
     STORAGE_REGION: z.string().min(1).default('auto'),
-    STORAGE_ACCESS_KEY_ID: z.string().min(1),
-    STORAGE_SECRET_ACCESS_KEY: z.string().min(1),
-    STORAGE_BUCKET_MEDIA: z.string().min(1),
-    STORAGE_BUCKET_BODY: z.string().min(1),
+    STORAGE_ACCESS_KEY_ID: optionalSecret,
+    STORAGE_SECRET_ACCESS_KEY: optionalSecret,
+    STORAGE_BUCKET_MEDIA: z.string().min(1).default('mgc-media'),
+    STORAGE_BUCKET_BODY: z.string().min(1).default('mgc-body-private'),
     STORAGE_FORCE_PATH_STYLE: z.stringbool().default(false),
 
     // --- Payments (Phase 2) ---
