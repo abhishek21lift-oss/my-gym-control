@@ -1,4 +1,4 @@
-﻿import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPrismaClient } from '../client';
 import type { PrismaClient } from '../generated/client/client';
 import { MissingTenantContextError, runWithTenantContext } from '../tenant-context';
